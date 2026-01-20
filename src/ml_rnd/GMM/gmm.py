@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from sklearn import datasets
 from sklearn.mixture import GaussianMixture
 import pandas as pd
+from similarity import calculate_hungarian_similarity
 
 
 wine: pd.DataFrame = datasets.load_wine(as_frame=True).frame
@@ -12,6 +13,24 @@ gmm: GaussianMixture = GaussianMixture(n_components=3)
 gmm.fit(wine_simple[["alcohol", "color_intensity"]])
 
 predictions: np.ndarray = gmm.predict(wine_simple[["alcohol", "color_intensity"]])
+
+
+wine_simple["prediction"] = predictions
+actual_sets = [[], [], []]
+predicted_sets = [[], [], []]
+for _, row in wine_simple.iterrows():
+    train_cols = row[["alcohol", "color_intensity"]]
+
+    target = int(row["target"])
+    prediction = int(row["prediction"])
+    
+    actual_sets[target].append(train_cols)
+    predicted_sets[prediction].append(train_cols)
+
+similarity, pairings = calculate_hungarian_similarity(actual_sets, predicted_sets)
+print("Similarity: {0}".format(similarity))
+print("Pairings: {0}".format(pairings))
+
 
 plt.figure(figsize=(7,5))
 plt.scatter(wine_simple[["alcohol"]], wine_simple[["color_intensity"]], c=predictions, cmap="tab10", s=30, alpha=0.8)
