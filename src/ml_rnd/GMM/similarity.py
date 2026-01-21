@@ -20,13 +20,13 @@ def calculate_mean_max_similarity(group1, group2):
     
     return sum(max_similarities) / len(max_similarities)
 
-def calculate_hungarian_similarity(group1, group2):
-    n = len(group1)
+def calculate_hungarian_similarity(predictions, target):
+    n = len(predictions)
     matrix = np.zeros((n, n))
     
     for i in range(n):
         for j in range(n):
-            matrix[i][j] = jaccard_similarity(group1[i], group2[j])
+            matrix[i][j] = jaccard_similarity(predictions[i], target[j])
     
     row_ind, col_ind = linear_sum_assignment(-matrix)
     
@@ -36,6 +36,20 @@ def calculate_hungarian_similarity(group1, group2):
     pairings = [(row_ind[i], col_ind[i], optimal_scores[i]) for i in range(n)]
     
     return avg_similarity, pairings
+
+def check_similarity(X, Y, predictions):
+    actual_sets = [[], [], []]
+    predicted_sets = [[], [], []]
+    for i in range(predictions.size):
+        x_i = X[i]
+
+        y_pred = int(predictions[i])
+        y_i = int(Y[i])
+        
+        actual_sets[y_i].append(x_i)
+        predicted_sets[y_pred].append(x_i)
+
+    return calculate_hungarian_similarity(actual_sets, predicted_sets)
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment

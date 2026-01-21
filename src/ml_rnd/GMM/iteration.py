@@ -1,72 +1,57 @@
-import pandas as pd
 import numpy as np
-from sklearn.mixture import GaussianMixture
+import random
 
-def calculate_new_cluster_mean(X: np.array, r_c: np.array):
-    """Calculate new mean of GMM cluster with updated responsibilities.
+def convert_truth_to_cluster_indices(pairings: np.array, Y: np.array, n: int):
+    """Converts the truth values to the clustering indices output by model
+       Would normally be assigned by human reviewer
+    
+    Args:
+        pairings: The set pairings calculated by Hungarian
+        Y: The true classes (k samples)
+        n: The number of components
+        
+    Returns:
+        The converted truth values
+    """
+
+    # 2 stages prevent replacement of unreplaced value
+    Y_mid = Y
+    for pred, truth, _ in pairings:
+        Y_mid[Y_mid == truth] = pred + n
+
+    Y_out = Y_mid
+    for i in range(Y_mid.size):
+        Y_out[i] = Y_mid[i] - n
+
+    return Y_out
+
+def perform_corrections(X: np.array, Y: np.array, r_c: np.array, correction_count: int, n: int):
+    """Update the responsibilties using the known classes (would normally be done by human review)
     
     Args:
         X: The training data (n features x k samples)
+        Y: The true classes (k samples)
         r_c: The responsibilities for the cluster (k samples)
+        correction_count: How many corrections to perform
+        n: The number of components
         
     Returns:
-        The new mean
+        The updated responsibilities
     """
 
-    sum = 0
+    r_new = r_c
 
-    for i in range(r_c.size):
-        r_ic = r_c[i]
-        x_i = X[i]
+    for _ in range(correction_count):
+        index = random.randrange(0, Y.size)
 
-        sum += r_ic * x_i
+        y_i = int(Y[index])
+        r_ci_new = r_c[index]
+        for j in range(n):
+            if j == y_i:    # Force responsibility of known matching component to 1
+                r_ci_new[j] = 1
+            else:           # Force responsibility of known non-matching components to 0
+                r_ci_new[j] = 0
 
-    return sum / calculate_cluster_responsibility_sum(r_c)
+        r_new[index] = r_ci_new
 
-def calculate_new_cluster_covariance(X: np.array, r_c: np.array):
-    """Calculate new covariance of GMM cluster with updated responsibilities.
-    
-    Args:
-        X: The training data (n features x k samples)
-        r_c: The responsibilities for the cluster (k samples)
-        
-    Returns:
-        The new mean
-    """
-
-    u_c = calculate_new_cluster_mean(X, r_c)
-
-    sum = 0
-
-    for i in range(r_c.size):
-        r_ic = r_c[i]
-        x_i = X[i]
-
-        diff = x_i - u_c
-        sum += r_ic * np.outer(diff, diff)
-
-    return sum / calculate_cluster_responsibility_sum(r_c)
-
-def calculate_new_cluster_weight(r_c: np.array):
-    """Calculate new weight of GMM cluster with updated responsibilities.
-    
-    Args:
-        r_c: The responsibilities for the cluster (k samples)
-        
-    Returns:
-        The new mean
-    """
-
-    return calculate_cluster_responsibility_sum(r_c) / r_c.size
-
-def calculate_cluster_responsibility_sum(r_c: np.array):
-    """Calculate the sum of all responsibilities for this cluster.
-    
-    Args:
-        r_c: The responsibilities for the cluster (k samples)
-        
-    Returns:
-        The responsibility sum
-    """
-
-    return r_c.sum(axis=0)
+    return r_new
