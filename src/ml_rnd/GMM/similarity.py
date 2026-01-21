@@ -1,12 +1,6 @@
 def jaccard_similarity(set1, set2):
-    print(set1)
-    print(set2)
     intersection = np.intersect1d(set1, set2)
     union = np.union1d(set1, set2)
-
-    print(intersection.size)
-    print(union.size)
-    print("")
 
     if union.size == 0:
         return 0
@@ -23,9 +17,6 @@ def calculate_mean_max_similarity(group1, group2):
             if score > best_match_score:
                 best_match_score = score
         max_similarities.append(best_match_score)
-
-    print("Max similarities: {0}".format(max_similarities))
-    print("")
     
     return sum(max_similarities) / len(max_similarities)
 
