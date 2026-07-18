@@ -1,51 +1,74 @@
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
 from sklearn import datasets
 from sklearn.mixture import GaussianMixture
-from sklearn.mixture._gaussian_mixture import _compute_precision_cholesky
-import pandas as pd
+from scipy.stats import multivariate_normal
 from similarity import check_similarity
 from update_gmm import update_means, update_covariances, update_weights
-from iteration import convert_truth_to_cluster_indices, perform_corrections
+from iteration import convert_truth_to_cluster_indices
+
+#news_groups = datasets.fetch_20newsgroups_vectorized(as_frame=True).frame
+#print(news_groups.columns)
 
 wine: pd.DataFrame = datasets.load_wine(as_frame=True).frame
-wine_simple: pd.DataFrame = wine[["alcohol", "color_intensity", "target"]]
+columns = wine.columns.copy()
+class_column = "target"
+feature_columns = columns[columns != class_column]
 
-gmm: GaussianMixture = GaussianMixture(n_components=3)
-X = wine_simple[["alcohol", "color_intensity"]].to_numpy()
+X = wine[feature_columns].to_numpy()
+print(f"{X.shape[0]} data points with {X.shape[1]} features")
+Y = wine[[class_column]].to_numpy().reshape(-1)
+n_components = np.unique(Y).size
+
+gmm: GaussianMixture = GaussianMixture(n_components=n_components, random_state=42)
 gmm.fit(X)
 
 predictions: np.ndarray = gmm.predict(X)
-Y = wine_simple[["target"]].to_numpy().reshape(-1)
 
+labelledness = np.zeros(X.shape[0])
 similarity, pairings = check_similarity(X, Y, predictions)
-print("Unsupervised Similarity: {0}".format(similarity))
-print("Unsupervised Pairings: {0}".format(pairings))
-print("")
+total_labeled = int(labelledness.sum())
+print(f"Iteration 00 | Labeled Percentage: {total_labeled/len(labelledness) * 100:.2f} | Similarity Score: {similarity:.4f}")
 
-r = gmm.predict_proba(X)
+Y_aligned = convert_truth_to_cluster_indices(pairings, Y.copy(), n_components)
 
-supervised_iteration_count = 10
-iteration_correction_count = 5
-for i in range(supervised_iteration_count):
-    iteration = i + 1
+correction_count_per_iteration = 5
+iteration = 1
+while similarity < 1:
 
-    Y = convert_truth_to_cluster_indices(pairings, Y, 3)
-    r = perform_corrections(X, Y, r, iteration_correction_count, 3)
-    new_means = update_means(X, r)
-    new_covariances = update_covariances(X, r)
-    new_weights = update_weights(r)
+    # Simulate human correct classification of a subset of data
+    unlabelled_indices = np.where(labelledness == 0)[0]
+    if len(unlabelled_indices) > 0:
+        new_labeled_indices = np.random.choice(
+            unlabelled_indices, 
+            size=min(correction_count_per_iteration, len(unlabelled_indices)), 
+            replace=False
+        )
+        labelledness[new_labeled_indices] = 1
 
-    gmm.means_ = new_means
-    gmm.covariances_ = new_covariances
-    gmm.weights_ = new_weights
+    r = np.zeros((X.shape[0], n_components))
+    for j in range(n_components):
+        likelihood = multivariate_normal.pdf(X, mean=gmm.means_[j], cov=gmm.covariances_[j])
+        r[:, j] = gmm.weights_[j] * likelihood
+    row_sums = r.sum(axis=1, keepdims=True)
+    row_sums[row_sums == 0] = 1e-12 # Prevents division by zero
+    r = r / row_sums
+    
+    labeled_rows = np.where(labelledness == 1)[0]
+    for idx in labeled_rows:
+        true_cluster = int(Y_aligned[idx])
+        r[idx, :] = 0.0
+        r[idx, true_cluster] = 1.0
 
-    gmm: GaussianMixture = GaussianMixture(n_components=3, covariance_type="full")
-    gmm.precisions_cholesky_ = _compute_precision_cholesky(new_covariances, 'full')
-    gmm.fit(X)
-    predictions: np.ndarray = gmm.predict(X)
 
-    similarity, pairings = check_similarity(X, Y, predictions)
-    print("Iteration {0} Similarity: {1}".format(iteration, similarity))
-    print("Iteration {0} Pairings: {1}".format(iteration, pairings))
-    print("")
+    gmm.means_ = update_means(X, r)
+    gmm.covariances_ = update_covariances(X, r)
+    gmm.weights_ = update_weights(r)
+    
+    predictions = np.argmax(r, axis=1)
+    
+    similarity, pairings = check_similarity(X, Y_aligned, predictions)
+    total_labeled = int(labelledness.sum())
+    print(f"Iteration {iteration:02d} | Labeled Percentage: {total_labeled/len(labelledness) * 100:.2f} | Similarity Score: {similarity:.4f}")
+
+    iteration += 1
