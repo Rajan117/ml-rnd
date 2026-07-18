@@ -7,17 +7,14 @@ from similarity import check_similarity
 from update_gmm import update_means, update_covariances, update_weights
 from iteration import convert_truth_to_cluster_indices
 
-#news_groups = datasets.fetch_20newsgroups_vectorized(as_frame=True).frame
-#print(news_groups.columns)
-
-wine: pd.DataFrame = datasets.load_wine(as_frame=True).frame
-columns = wine.columns.copy()
+data: pd.DataFrame = datasets.load_wine(as_frame=True).frame
+columns = data.columns.copy()
 class_column = "target"
 feature_columns = columns[columns != class_column]
 
-X = wine[feature_columns].to_numpy()
+X = data[feature_columns].to_numpy()
 print(f"{X.shape[0]} data points with {X.shape[1]} features")
-Y = wine[[class_column]].to_numpy().reshape(-1)
+Y = data[[class_column]].to_numpy().reshape(-1)
 n_components = np.unique(Y).size
 
 gmm: GaussianMixture = GaussianMixture(n_components=n_components, random_state=42)
