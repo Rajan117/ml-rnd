@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from sklearn import datasets
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
@@ -61,7 +62,12 @@ def perform_iterations(data: pd.DataFrame, class_column: str):
     predictions = np.argmax(r, axis=1)
     similarity, _ = check_similarity(X, Y_aligned, predictions)
     total_labeled = int(labelledness.sum())
-    print(f"Iteration 00 | Human-labelled Percentage: {total_labeled/len(labelledness) * 100:.2f} | Similarity Score: {similarity:.4f}")
+    labelled_percentage = total_labeled/len(labelledness) * 100
+    print(f"Iteration 00 | Human-labelled Percentage: {labelled_percentage:.2f} | Similarity Score: {similarity:.4f}")
+    if labelled_percentage in percentage_to_similarity_map:
+            percentage_to_similarity_map[labelled_percentage].append(similarity)
+    else:
+            percentage_to_similarity_map[labelled_percentage] = [similarity]
 
     correction_count_per_iteration = int(X.shape[0] * CORRECTION_PERCENTAGE)
     iteration = 1
@@ -127,7 +133,12 @@ def perform_iterations(data: pd.DataFrame, class_column: str):
         predictions = np.argmax(r, axis=1)
         similarity, _ = check_similarity(X, Y_aligned, predictions)
         total_labeled = int(labelledness.sum())
-        print(f"Iteration {iteration:02d} | Human-labelled Percentage: {total_labeled/len(labelledness) * 100:.2f} | Similarity Score: {similarity:.4f}")
+        labelled_percentage = total_labeled/len(labelledness) * 100
+        print(f"Iteration {iteration:02d} | Human-labelled Percentage: {labelled_percentage:.2f} | Similarity Score: {similarity:.4f}")
+        if labelled_percentage in percentage_to_similarity_map:
+            percentage_to_similarity_map[labelled_percentage].append(similarity)
+        else:
+            percentage_to_similarity_map[labelled_percentage] = [similarity]
 
         iteration += 1
 
@@ -135,6 +146,19 @@ ZERO_SUBSTITUTE = 1e-12 # Prevents division by zero
 SUB_ITERATION_COUNT = 3
 CORRECTION_PERCENTAGE = 0.05
 
+percentage_to_similarity_map = {}
 if __name__ == "__main__":
     wine: pd.DataFrame = datasets.load_wine(as_frame=True).frame
-    perform_iterations(wine, "target")
+    REPEATS = 10000
+    for i in range(REPEATS):
+        perform_iterations(wine, "target")
+        print("-------------------------------")
+
+    label_percentages = list(percentage_to_similarity_map.keys())
+
+    similarity_lists = list(percentage_to_similarity_map.values())
+    similarities = [np.array(arr).mean() * 100 for arr in similarity_lists]
+    plt.scatter(label_percentages, similarities)
+    plt.xlabel("Percentage of training data labelled manually (%)")
+    plt.ylabel("Accuracy of training data clustering (%)")
+    plt.show()
