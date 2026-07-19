@@ -37,9 +37,9 @@ def calculate_hungarian_similarity(predictions, target):
     
     return avg_similarity, pairings
 
-def check_similarity(X, Y, predictions):
-    actual_sets = [[], [], []]
-    predicted_sets = [[], [], []]
+def check_similarity(X, Y, predictions, n_components):
+    actual_sets = [[] for _ in range(n_components)]
+    predicted_sets = [[] for _ in range(n_components)]
     for i in range(predictions.size):
         x_i = X[i]
 

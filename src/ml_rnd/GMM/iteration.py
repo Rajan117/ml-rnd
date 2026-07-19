@@ -2,8 +2,9 @@ import numpy as np
 import random
 
 def convert_truth_to_cluster_indices(pairings: np.array, Y: np.array, n: int):
-    """Converts the truth values to the clustering indices output by model
-       Would normally be assigned by human reviewer
+    """
+    Converts the truth values to the clustering indices output by model
+    Would normally be assigned by human reviewer
     
     Args:
         pairings: The set pairings calculated by Hungarian
@@ -26,7 +27,8 @@ def convert_truth_to_cluster_indices(pairings: np.array, Y: np.array, n: int):
     return Y_out
 
 def perform_corrections(X: np.array, Y: np.array, r_c: np.array, correction_count: int, n: int):
-    """Update the responsibilties using the known classes (would normally be done by human review)
+    """
+    Update the responsibilties using the known classes (would normally be done by human review)
     
     Args:
         X: The training data (n features x k samples)

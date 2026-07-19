@@ -9,6 +9,67 @@ from similarity import check_similarity
 from update_gmm import update_weights
 from iteration import convert_truth_to_cluster_indices
 
+def estimate_m_step(X: np.ndarray, r: np.ndarray, n_components: int):
+    """
+    Computes vectorized GMM parameter estimations for means, covariances, and weights.
+    
+    Args:
+        X: The training data (n features x k samples)
+        r: The responsibilities for the clusters (k samples x d components)
+        n_components: The number of components
+        
+    Returns:
+        Tuple containing new means, covariances and weights
+    """
+
+    new_means = np.zeros((n_components, X.shape[1]))
+    new_covariances = np.zeros((n_components, X.shape[1], X.shape[1]))
+    
+    for j in range(n_components):
+        r_c = r[:, j]
+        sum_r_c = r_c.sum()
+        
+        new_means[j] = (X * r_c[:, None]).sum(axis=0) / sum_r_c
+        
+        diff = X - new_means[j]
+        new_covariances[j] = np.dot(diff.T, diff * r_c[:, None]) / sum_r_c + (1e-6 * np.eye(X.shape[1]))
+        
+    new_weights = update_weights(r)
+    return new_means, new_covariances, new_weights
+
+
+def log_iteration_metrics(iteration_str: str, X: np.ndarray, Y_aligned: np.ndarray, r: np.ndarray, n_components: int, labelledness: np.ndarray, metrics_map: dict):
+    """
+    Outputs metrics and logs for final plot
+    
+    Args:
+        iteration_str: The padded string format of the current loop iteration index
+        X: The training data (n features x k samples)
+        Y_aligned: The target classes mapped to the model's component indices (k samples)
+        r: The responsibilities for the cluster (k samples x d components)
+        n_components: The number of components
+        labelledness: Tracking mask where 1 indicates a human-labeled sample (k samples)
+        metrics_map: A dictionary accumulating similarity histories mapped to specific label percentages
+        
+    Returns:
+        The calculated Hungarian Jaccard similarity score for the current state
+    """
+
+    predictions = np.argmax(r, axis=1)
+    similarity, _ = check_similarity(X, Y_aligned, predictions, n_components)
+    total_labeled = int(labelledness.sum())
+    labelled_percentage = total_labeled / len(labelledness) * 100
+    
+    print(f"Iteration {iteration_str} | Human-labelled Percentage: {labelled_percentage:.2f} | Similarity Score: {similarity:.4f}")
+    
+    if labelled_percentage in metrics_map:
+        metrics_map[labelled_percentage].append(similarity)
+    else:
+        metrics_map[labelled_percentage] = [similarity]
+        
+    return similarity
+
+
 def perform_iterations(data: pd.DataFrame, class_column: str):
     columns = data.columns.copy()
     feature_columns = columns[columns != class_column]
@@ -26,7 +87,7 @@ def perform_iterations(data: pd.DataFrame, class_column: str):
     temp_gmm = GaussianMixture(n_components=n_components, random_state=42)
     temp_gmm.fit(X)
     temp_preds = temp_gmm.predict(X)
-    _, pairings = check_similarity(X, Y, temp_preds)
+    _, pairings = check_similarity(X, Y, temp_preds, n_components)
     Y_aligned = convert_truth_to_cluster_indices(pairings, Y.copy(), n_components)
 
     # Seed the initial GMM parameters using a small 5% subset of human-labeled ground truth data.
@@ -43,31 +104,12 @@ def perform_iterations(data: pd.DataFrame, class_column: str):
         r_init[idx, :] = 0.0
         r_init[idx, true_cluster] = 1.0
 
-
     gmm = GaussianMixture(n_components=n_components, random_state=42)
-    gmm.means_ = np.zeros((n_components, X.shape[1]))
-    gmm.covariances_ = np.zeros((n_components, X.shape[1], X.shape[1]))
     
-    # Vectorized initial parameter estimation based on seed labels
-    for j in range(n_components):
-        r_c = r_init[:, j]
-        sum_r_c = r_c.sum()
-        gmm.means_[j] = (X * r_c[:, None]).sum(axis=0) / sum_r_c
-        diff = X - gmm.means_[j]
-        gmm.covariances_[j] = np.dot(diff.T, diff * r_c[:, None]) / sum_r_c + (1e-6 * np.eye(X.shape[1]))
-    gmm.weights_ = update_weights(r_init)
+    gmm.means_, gmm.covariances_, gmm.weights_ = estimate_m_step(X, r_init, n_components)
 
-    # Calculate initial baseline performance with seed labels included
     r = r_init.copy()
-    predictions = np.argmax(r, axis=1)
-    similarity, _ = check_similarity(X, Y_aligned, predictions)
-    total_labeled = int(labelledness.sum())
-    labelled_percentage = total_labeled/len(labelledness) * 100
-    print(f"Iteration 00 | Human-labelled Percentage: {labelled_percentage:.2f} | Similarity Score: {similarity:.4f}")
-    if labelled_percentage in percentage_to_similarity_map:
-            percentage_to_similarity_map[labelled_percentage].append(similarity)
-    else:
-            percentage_to_similarity_map[labelled_percentage] = [similarity]
+    similarity = log_iteration_metrics("00", X, Y_aligned, r, n_components, labelledness, percentage_to_similarity_map)
 
     correction_count_per_iteration = int(X.shape[0] * CORRECTION_PERCENTAGE)
     iteration = 1
@@ -111,53 +153,36 @@ def perform_iterations(data: pd.DataFrame, class_column: str):
                 r[idx, :] = 0.0
                 r[idx, true_cluster] = 1.0
 
-            new_means = np.zeros((n_components, X.shape[1]))
-            new_covariances = np.zeros((n_components, X.shape[1], X.shape[1]))
-            
-            for j in range(n_components):
-                r_c = r[:, j]
-                sum_r_c = r_c.sum()
-                
-                # Compute new means for clusters
-                new_means[j] = (X * r_c[:, None]).sum(axis=0) / sum_r_c
-                
-                # Compute new covariances for clusters
-                diff = X - new_means[j]
-                new_covariances[j] = np.dot(diff.T, diff * r_c[:, None]) / sum_r_c + (1e-6 * np.eye(X.shape[1]))
-
-            gmm.means_ = new_means
-            gmm.covariances_ = new_covariances
-            gmm.weights_ = update_weights(r)
+            gmm.means_, gmm.covariances_, gmm.weights_ = estimate_m_step(X, r, n_components)
         
-        # Evaluate performance for the current iteration
-        predictions = np.argmax(r, axis=1)
-        similarity, _ = check_similarity(X, Y_aligned, predictions)
-        total_labeled = int(labelledness.sum())
-        labelled_percentage = total_labeled/len(labelledness) * 100
-        print(f"Iteration {iteration:02d} | Human-labelled Percentage: {labelled_percentage:.2f} | Similarity Score: {similarity:.4f}")
-        if labelled_percentage in percentage_to_similarity_map:
-            percentage_to_similarity_map[labelled_percentage].append(similarity)
-        else:
-            percentage_to_similarity_map[labelled_percentage] = [similarity]
-
+        similarity = log_iteration_metrics(f"{iteration:02d}", X, Y_aligned, r, n_components, labelledness, percentage_to_similarity_map)
         iteration += 1
 
-ZERO_SUBSTITUTE = 1e-12 # Prevents division by zero
+ZERO_SUBSTITUTE = 1e-12 
 SUB_ITERATION_COUNT = 3
 CORRECTION_PERCENTAGE = 0.05
 
 percentage_to_similarity_map = {}
 if __name__ == "__main__":
-    wine: pd.DataFrame = datasets.load_wine(as_frame=True).frame
-    REPEATS = 10000
-    for i in range(REPEATS):
-        perform_iterations(wine, "target")
+    #df: pd.DataFrame = datasets.load_wine(as_frame=True).frame
+    df: pd.DataFrame = datasets.load_digits(as_frame=True).frame
+    REPEATS = 100
+    for _ in range(REPEATS):
+        perform_iterations(df, "target")
         print("-------------------------------")
 
     label_percentages = list(percentage_to_similarity_map.keys())
-
     similarity_lists = list(percentage_to_similarity_map.values())
     similarities = [np.array(arr).mean() * 100 for arr in similarity_lists]
+
+    print("AVERAGED labelled vs similarity")
+    for i in range(len(label_percentages)):
+        iteration_str = f"{i:02d}"
+        percentage_labelled = label_percentages[i]
+        similarity = similarities[i]
+
+        print(f"Iteration {iteration_str} | Human-labelled Percentage: {percentage_labelled:.2f} | Similarity Score: {similarity:.4f}")
+    
     plt.scatter(label_percentages, similarities)
     plt.xlabel("Percentage of training data labelled manually (%)")
     plt.ylabel("Accuracy of training data clustering (%)")
