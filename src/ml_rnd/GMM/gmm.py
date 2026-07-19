@@ -166,24 +166,32 @@ percentage_to_similarity_map = {}
 if __name__ == "__main__":
     #df: pd.DataFrame = datasets.load_wine(as_frame=True).frame
     df: pd.DataFrame = datasets.load_digits(as_frame=True).frame
-    REPEATS = 100
+    REPEATS = 1000
     for _ in range(REPEATS):
         perform_iterations(df, "target")
         print("-------------------------------")
 
-    label_percentages = list(percentage_to_similarity_map.keys())
+    x = np.array(list(percentage_to_similarity_map.keys()))
     similarity_lists = list(percentage_to_similarity_map.values())
-    similarities = [np.array(arr).mean() * 100 for arr in similarity_lists]
+    y = np.array([np.array(arr).mean() * 100 for arr in similarity_lists])
 
     print("AVERAGED labelled vs similarity")
-    for i in range(len(label_percentages)):
+    for i in range(len(x)):
         iteration_str = f"{i:02d}"
-        percentage_labelled = label_percentages[i]
-        similarity = similarities[i]
+        percentage_labelled = x[i]
+        similarity = y[i]
 
         print(f"Iteration {iteration_str} | Human-labelled Percentage: {percentage_labelled:.2f} | Similarity Score: {similarity:.4f}")
     
-    plt.scatter(label_percentages, similarities)
+    # Plot data points for labelled percentage vs accuracy for semi-supervised classification
+    plt.scatter(x, y, label="Semi-supervised classification")
+
+    # Plot data points for labelled percentage vs accuracy for pure manual classification
+    true_manual = [i for i in range(100)]
+    plt.plot(true_manual, true_manual, color="crimson", linestyle="--", linewidth=2, label="Pure manual classification", zorder=2)
+
     plt.xlabel("Percentage of training data labelled manually (%)")
     plt.ylabel("Accuracy of training data clustering (%)")
+
+    plt.legend()
     plt.show()

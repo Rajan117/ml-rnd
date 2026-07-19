@@ -46,8 +46,8 @@ def check_similarity(X, Y, predictions, n_components):
         y_pred = int(predictions[i])
         y_i = int(Y[i])
         
-        actual_sets[y_i].append(x_i)
-        predicted_sets[y_pred].append(x_i)
+        actual_sets[y_i].append(i)
+        predicted_sets[y_pred].append(i)
 
     return calculate_hungarian_similarity(actual_sets, predicted_sets)
 
